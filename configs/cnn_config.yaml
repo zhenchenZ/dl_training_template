@@ -1,0 +1,42 @@
+# CNN Model Configuration
+
+# Data settings
+data:
+  batch_size: 64
+  num_workers: 4
+  train_ratio: 0.8
+  random_state: 42
+  normalize: true
+  augmentation: true
+
+# Model settings
+model:
+  type: cnn
+  input_channels: 1
+  output_dim: 10
+  num_filters: [32, 64, 128]
+  kernel_size: 3
+  dropout_rate: 0.3
+  flatten_size: 2048
+
+# Training settings
+training:
+  epochs: 20
+  learning_rate: 0.0001
+  weight_decay: 0.0001
+  gradient_clip: 1.0
+  optimizer: adam
+  use_scheduler: true
+  scheduler_patience: 3
+  scheduler_factor: 0.5
+  early_stopping: true
+  patience: 7
+
+# Logging and checkpointing
+logging:
+  log_dir: logs/cnn_experiment
+  checkpoint_dir: checkpoints/cnn_experiment
+  save_freq: 2
+
+# Device
+device: cuda

@@ -1,0 +1,38 @@
+# Data settings
+data:
+  batch_size: 32
+  num_workers: 4
+  train_ratio: 0.8
+  random_state: 42
+  normalize: true
+  augmentation: false
+
+# Model settings
+model:
+  type: mlp
+  input_dim: 784
+  output_dim: 10
+  hidden_dims: [256, 128]
+  dropout_rate: 0.5
+
+# Training settings
+training:
+  epochs: 10
+  learning_rate: 0.001
+  weight_decay: 0.00001
+  gradient_clip: 1.0
+  optimizer: adam
+  use_scheduler: true
+  scheduler_patience: 5
+  scheduler_factor: 0.5
+  early_stopping: true
+  patience: 10
+
+# Logging and checkpointing
+logging:
+  log_dir: logs
+  checkpoint_dir: checkpoints
+  save_freq: 1
+
+# Device
+device: cuda
