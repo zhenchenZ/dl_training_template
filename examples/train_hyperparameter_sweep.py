@@ -9,12 +9,12 @@ import numpy as np
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from data import BaseDataset, create_data_loaders, split_data
-from models import create_model
-from training import Trainer, HyperparameterSweeper
-from config import Config
+from src.data import BaseDataset, create_data_loaders, split_data
+from src.models import create_model
+from src.training import Trainer, HyperparameterSweeper
+from src.config import Config
 
 
 def generate_dummy_data(n_samples=1000, input_dim=784, n_classes=10):

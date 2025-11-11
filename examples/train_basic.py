@@ -9,14 +9,14 @@ import numpy as np
 import sys
 from pathlib import Path
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+# Add parent directory to path to import src as a package
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from data import BaseDataset, create_data_loaders, split_data
-from models import create_model
-from training import Trainer
-from evaluation import evaluate_model
-from config import Config
+from src.data import BaseDataset, create_data_loaders, split_data
+from src.models import create_model
+from src.training import Trainer
+from src.evaluation import evaluate_model
+from src.config import Config
 
 
 def generate_dummy_data(n_samples=1000, input_dim=784, n_classes=10):
