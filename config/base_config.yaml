@@ -1,0 +1,37 @@
+model:
+  input_dim: 6
+  hidden_dims: [128, 128]
+  activation: "relu"
+  dropout: 0.1
+
+data:
+  dataset: "real"          
+  npz_path: "data/preprocessed/cleaned_x_y_hot.npz"
+  batch_size: 64
+  seed: 42
+
+optim:
+  name: "adam"
+  lr: 0.001
+  weight_decay: 0.0
+
+train:
+  num_epochs: 50
+  log_interval: 5
+  device: null  # auto
+
+logging:
+  root_dir: "./runs"
+  experiment_name: "real_dataset_experiment"
+
+checkpoint:
+  save_best: true
+  save_last: false
+  monitor: "val_loss"
+  mode: "min"
+
+
+cv:
+  n_splits: 1           # 1 means no CV, just a single train/val split
+  shuffle: true
+  seed: 42

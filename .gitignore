@@ -1,0 +1,6 @@
+data/
+debug/
+runs/
+
+*.pyc
+*.DS_Store
