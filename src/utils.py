@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from pathlib import Path
-from typing import Dict, Union
+from typing import Dict, Union, Any
 
 from src.config import get_experiment_dirs
 
@@ -29,42 +29,63 @@ def save_normalization_stats(
     name: str = "scaler_stats",
 ) -> Path:
     """
-    Save normalization statistics (min/max or mean/std) to:
-        <exp_root>/hparams/<name>.npz
+    Save normalization statistics for X (and optionally Y) to:
+        <hparams_dir>/<name>.npz
 
-    Args:
-        exp_root: experiment root directory (Path or str).
-        stats: dict returned by _compute_normalization_stats, e.g.:
-               {
-                 "method": "minmax",
-                 "x_min": torch.Tensor(D),
-                 "x_max": torch.Tensor(D),
-               }
-               or
-               {
-                 "method": "standardize",
-                 "x_mean": torch.Tensor(D),
-                 "x_std": torch.Tensor(D),
-               }
-        name: base filename (without extension).
-
-    Returns:
-        Path to the saved .npz file.
+    Expected stats structure:
+        stats = {
+            "x": {
+                "method": "minmax" or "standardize",
+                "x_min": Tensor(D), "x_max": Tensor(D),       # if minmax
+                "x_mean": Tensor(D), "x_std": Tensor(D),      # if standardize
+            } or None,
+            "y": {
+                "method": "minmax" or "standardize",
+                "y_min": float, "y_max": float,               # if minmax
+                "y_mean": float, "y_std": float,              # if standardize
+            } or None,
+        }
     """
     hparams_dir = Path(hparams_dir)
 
-    method = stats.get("method")
-    if method not in ("minmax", "standardize"):
-        raise ValueError(f"Unknown normalization method in stats: {method}")
+    stats_x = stats.get("x", None)
+    stats_y = stats.get("y", None)
 
-    payload = {"method": method}
+    payload = {}
 
-    if method == "minmax":
-        payload["x_min"] = stats["x_min"].detach().cpu().numpy()
-        payload["x_max"] = stats["x_max"].detach().cpu().numpy()
-    else:  # standardize
-        payload["x_mean"] = stats["x_mean"].detach().cpu().numpy()
-        payload["x_std"] = stats["x_std"].detach().cpu().numpy()
+    # ---------------- X stats ----------------
+    if stats_x is not None:
+        method_x = stats_x.get("method")
+        if method_x not in ("minmax", "standardize"):
+            raise ValueError(f"Unknown X normalization method: {method_x}")
+        payload["x_method"] = method_x
+
+        if method_x == "minmax":
+            payload["x_min"] = stats_x["x_min"].detach().cpu().numpy()
+            payload["x_max"] = stats_x["x_max"].detach().cpu().numpy()
+        else:
+            payload["x_mean"] = stats_x["x_mean"].detach().cpu().numpy()
+            payload["x_std"] = stats_x["x_std"].detach().cpu().numpy()
+    else:
+        payload["x_method"] = "none"
+
+    # ---------------- Y stats ----------------
+    if stats_y is not None:
+        method_y = stats_y.get("method")
+        if method_y not in ("minmax", "standardize"):
+            raise ValueError(f"Unknown Y normalization method: {method_y}")
+        payload["y_method"] = method_y
+        payload["normalize_target"] = True
+
+        if method_y == "minmax":
+            payload["y_min"] = float(stats_y["y_min"])
+            payload["y_max"] = float(stats_y["y_max"])
+        else:
+            payload["y_mean"] = float(stats_y["y_mean"])
+            payload["y_std"] = float(stats_y["y_std"])
+    else:
+        payload["y_method"] = "none"
+        payload["normalize_target"] = False
 
     out_path = hparams_dir / f"{name}.npz"
     np.savez(out_path, **payload)
@@ -74,14 +95,50 @@ def save_normalization_stats(
 
 
 def load_normalization_stats(path: Union[str, Path]) -> Dict:
+    """
+    Load normalization stats saved by save_normalization_stats().
+
+    Returns:
+        {
+          "x": {
+             "method": "minmax"/"standardize",
+             "x_min"/"x_max" or "x_mean"/"x_std",
+          } or None,
+          "y": {
+             "method": "minmax"/"standardize",
+             "y_min"/"y_max" or "y_mean"/"y_std",
+          } or None,
+        }
+    """
     path = Path(path)
     data = np.load(path, allow_pickle=True)
-    method = str(data["method"])
-    stats = {"method": method}
-    if method == "minmax":
-        stats["x_min"] = torch.tensor(data["x_min"], dtype=torch.float32)
-        stats["x_max"] = torch.tensor(data["x_max"], dtype=torch.float32)
-    else:
-        stats["x_mean"] = torch.tensor(data["x_mean"], dtype=torch.float32)
-        stats["x_std"] = torch.tensor(data["x_std"], dtype=torch.float32)
-    return stats
+
+    stats_x = None
+    stats_y = None
+
+    # ---------- X ----------
+    x_method = str(data.get("x_method", "none"))
+    if x_method in ("minmax", "standardize"):
+        stats_x = {"method": x_method}
+        if x_method == "minmax":
+            stats_x["x_min"] = torch.tensor(data["x_min"], dtype=torch.float32)
+            stats_x["x_max"] = torch.tensor(data["x_max"], dtype=torch.float32)
+        else:
+            stats_x["x_mean"] = torch.tensor(data["x_mean"], dtype=torch.float32)
+            stats_x["x_std"] = torch.tensor(data["x_std"], dtype=torch.float32)
+
+    # ---------- Y ----------
+    normalize_target = bool(data.get("normalize_target", False))
+    y_method = str(data.get("y_method", "none"))
+
+    if normalize_target and y_method in ("minmax", "standardize"):
+        stats_y = {"method": y_method}
+        if y_method == "minmax":
+            stats_y["y_min"] = float(data["y_min"])
+            stats_y["y_max"] = float(data["y_max"])
+        else:
+            stats_y["y_mean"] = float(data["y_mean"])
+            stats_y["y_std"] = float(data["y_std"])
+
+    return {"x": stats_x, "y": stats_y}
+

@@ -92,6 +92,13 @@ class NormalizedSubset(Dataset):
         x_max: Optional[torch.Tensor] = None,
         x_mean: Optional[torch.Tensor] = None,
         x_std: Optional[torch.Tensor] = None,
+        # Y normalization options
+        normalize_target: bool = False,
+        target_norm_method: Literal["minmax", "standardize"] = "minmax",
+        y_min: Optional[float] = None,
+        y_max: Optional[float] = None,
+        y_mean: Optional[float] = None,
+        y_std: Optional[float] = None,
     ):
         self.base_dataset = base_dataset
         self.indices = list(indices)
@@ -103,6 +110,14 @@ class NormalizedSubset(Dataset):
         self.x_mean = x_mean
         self.x_std = x_std
 
+        # Y stats / options
+        self.normalize_target = normalize_target
+        self.target_norm_method = target_norm_method
+        self.y_min = y_min
+        self.y_max = y_max
+        self.y_mean = y_mean
+        self.y_std = y_std
+
     def __len__(self):
         return len(self.indices)
 
@@ -110,12 +125,24 @@ class NormalizedSubset(Dataset):
         base_idx = self.indices[idx]
         x, y = self.base_dataset[base_idx]  # assume x,y are tensors
 
+        # ---- normalize X ----
         if self.method == "minmax":
             x = (x - self.x_min) / (self.x_max - self.x_min + 1e-12)
         elif self.method == "standardize":
             x = (x - self.x_mean) / (self.x_std + 1e-12)
         else:
             raise ValueError(f"Unknown normalization method: {self.method}")
+
+        # ---- normalize y if needed ----
+        if self.normalize_target:
+            if self.target_norm_method == "minmax":
+                y = (y - self.y_min) / (self.y_max - self.y_min + 1e-12)
+            elif self.target_norm_method == "standardize":
+                y = (y - self.y_mean) / (self.y_std + 1e-12)
+            else:
+                raise ValueError(
+                    f"Unknown target_norm_method: {self.target_norm_method}"
+                )
 
         return x, y
 
@@ -163,12 +190,42 @@ def _compute_normalization_stats(
         raise ValueError(f"Unknown normalization method: {method}")
 
 
-def make_train_val_loaders(
-    cfg: DataConfig,
-    normalize: bool = True,
-    norm_method: str = "minmax",
-    return_stats: bool = False,
+def _compute_target_stats(
+    dataset: Dataset,
+    indices: Sequence[int],
+    method: Literal["minmax", "standardize"] = "minmax",
 ):
+    """
+    Compute target normalization stats from a subset of indices.
+    Assumes dataset[i][1] returns a scalar tensor.
+    """
+    ys = [dataset[i][1] for i in indices]
+    y = torch.stack(ys, dim=0).float()  # (N,)
+
+    if method == "minmax":
+        y_min = y.min().item()
+        y_max = y.max().item()
+        return {"method": "minmax", "y_min": y_min, "y_max": y_max}
+
+    elif method == "standardize":
+        y_mean = y.mean().item()
+        y_std = y.std().item()
+        if y_std == 0:
+            y_std = 1.0
+        return {"method": "standardize", "y_mean": y_mean, "y_std": y_std}
+
+    else:
+        raise ValueError(f"Unknown target stats method: {method}")
+
+
+def make_train_val_loaders(cfg: DataConfig):
+
+    normalize_x = cfg.normalize_x
+    x_norm_method = cfg.x_norm_method
+    normalize_y = cfg.normalize_y
+    y_norm_method = cfg.y_norm_method
+    return_stats = cfg.return_stats
+
     dataset = build_dataset(cfg)
     n_total = len(dataset)
     n_val = int(n_total * cfg.val_ratio)
@@ -180,40 +237,70 @@ def make_train_val_loaders(
         generator=torch.Generator().manual_seed(cfg.seed),
     )
 
-    stats = None
+    stats_x = None
+    stats_y = None
 
-    if normalize:
-        train_indices = train_subset.indices
-        val_indices = val_subset.indices
+    train_indices = train_subset.indices
+    val_indices = val_subset.indices
 
-        stats = _compute_normalization_stats(dataset, train_indices, method=norm_method)
+    if normalize_x:
+        stats_x = _compute_normalization_stats(dataset, train_indices, method=x_norm_method)
 
-        if norm_method == "minmax":
-            train_ds = NormalizedSubset(
-                dataset, train_indices,
-                method="minmax",
-                x_min=stats["x_min"],
-                x_max=stats["x_max"],
-            )
-            val_ds = NormalizedSubset(
-                dataset, val_indices,
-                method="minmax",
-                x_min=stats["x_min"],
-                x_max=stats["x_max"],
-            )
-        else:
-            train_ds = NormalizedSubset(
-                dataset, train_indices,
-                method="standardize",
-                x_mean=stats["x_mean"],
-                x_std=stats["x_std"],
-            )
-            val_ds = NormalizedSubset(
-                dataset, val_indices,
-                method="standardize",
-                x_mean=stats["x_mean"],
-                x_std=stats["x_std"],
-            )
+    if normalize_y:
+        stats_y = _compute_target_stats(dataset, train_indices, method=y_norm_method)
+
+    # ---- build wrapped datasets ----
+    if normalize_x or normalize_y:
+        # X stats
+        x_min = x_max = x_mean = x_std = None
+        if stats_x is not None:
+            if stats_x["method"] == "minmax":
+                x_min = stats_x["x_min"]
+                x_max = stats_x["x_max"]
+            else:
+                x_mean = stats_x["x_mean"]
+                x_std = stats_x["x_std"]
+
+        # Y stats
+        y_min = y_max = y_mean = y_std = None
+        if stats_y is not None:
+            if stats_y["method"] == "minmax":
+                y_min = stats_y["y_min"]
+                y_max = stats_y["y_max"]
+            else:
+                y_mean = stats_y["y_mean"]
+                y_std = stats_y["y_std"]
+
+        train_ds = NormalizedSubset(
+            dataset,
+            train_indices,
+            method=x_norm_method if normalize_x else "minmax",  # still need something
+            x_min=x_min,
+            x_max=x_max,
+            x_mean=x_mean,
+            x_std=x_std,
+            normalize_target=normalize_y,
+            target_norm_method=y_norm_method,
+            y_min=y_min,
+            y_max=y_max,
+            y_mean=y_mean,
+            y_std=y_std,
+        )
+        val_ds = NormalizedSubset(
+            dataset,
+            val_indices,
+            method=x_norm_method if normalize_x else "minmax",
+            x_min=x_min,
+            x_max=x_max,
+            x_mean=x_mean,
+            x_std=x_std,
+            normalize_target=normalize_y,
+            target_norm_method=y_norm_method,
+            y_min=y_min,
+            y_max=y_max,
+            y_mean=y_mean,
+            y_std=y_std,
+        )
     else:
         train_ds = train_subset
         val_ds = val_subset
@@ -222,7 +309,7 @@ def make_train_val_loaders(
     val_loader = DataLoader(val_ds, batch_size=cfg.batch_size, shuffle=False)
 
     if return_stats:
-        return train_loader, val_loader, stats
+        return train_loader, val_loader, {"x": stats_x, "y": stats_y}
     return train_loader, val_loader
 
 def make_cv_loaders(
@@ -230,41 +317,73 @@ def make_cv_loaders(
     train_idx,
     val_idx,
     cfg: DataConfig,
-    normalize: bool = True,
-    norm_method: str = "minmax",
-    return_stats: bool = False,
 ):
-    stats = None
+    normalize_x = cfg.normalize_x
+    x_norm_method = cfg.x_norm_method
+    normalize_y = cfg.normalize_y
+    y_norm_method = cfg.y_norm_method
+    return_stats = cfg.return_stats
+    
+    stats_x = None
+    stats_y = None
 
-    if normalize:
-        stats = _compute_normalization_stats(dataset, train_idx, method=norm_method)
+    if normalize_x:
+        stats_x = _compute_normalization_stats(dataset, train_idx, method=x_norm_method)
 
-        if norm_method == "minmax":
-            train_ds = NormalizedSubset(
-                dataset, train_idx,
-                method="minmax",
-                x_min=stats["x_min"],
-                x_max=stats["x_max"],
-            )
-            val_ds = NormalizedSubset(
-                dataset, val_idx,
-                method="minmax",
-                x_min=stats["x_min"],
-                x_max=stats["x_max"],
-            )
-        else:
-            train_ds = NormalizedSubset(
-                dataset, train_idx,
-                method="standardize",
-                x_mean=stats["x_mean"],
-                x_std=stats["x_std"],
-            )
-            val_ds = NormalizedSubset(
-                dataset, val_idx,
-                method="standardize",
-                x_mean=stats["x_mean"],
-                x_std=stats["x_std"],
-            )
+    if normalize_y:
+        stats_y = _compute_target_stats(dataset, train_idx, method=y_norm_method)
+
+    if normalize_x or normalize_y:
+        # X stats
+        x_min = x_max = x_mean = x_std = None
+        if stats_x is not None:
+            if stats_x["method"] == "minmax":
+                x_min = stats_x["x_min"]
+                x_max = stats_x["x_max"]
+            else:
+                x_mean = stats_x["x_mean"]
+                x_std = stats_x["x_std"]
+
+        # Y stats
+        y_min = y_max = y_mean = y_std = None
+        if stats_y is not None:
+            if stats_y["method"] == "minmax":
+                y_min = stats_y["y_min"]
+                y_max = stats_y["y_max"]
+            else:
+                y_mean = stats_y["y_mean"]
+                y_std = stats_y["y_std"]
+
+        train_ds = NormalizedSubset(
+            dataset,
+            train_idx,
+            method=x_norm_method if normalize_x else "minmax",
+            x_min=x_min,
+            x_max=x_max,
+            x_mean=x_mean,
+            x_std=x_std,
+            normalize_target=normalize_y,
+            target_norm_method=y_norm_method,
+            y_min=y_min,
+            y_max=y_max,
+            y_mean=y_mean,
+            y_std=y_std,
+        )
+        val_ds = NormalizedSubset(
+            dataset,
+            val_idx,
+            method=x_norm_method if normalize_x else "minmax",
+            x_min=x_min,
+            x_max=x_max,
+            x_mean=x_mean,
+            x_std=x_std,
+            normalize_target=normalize_y,
+            target_norm_method=y_norm_method,
+            y_min=y_min,
+            y_max=y_max,
+            y_mean=y_mean,
+            y_std=y_std,
+        )
     else:
         train_ds = Subset(dataset, train_idx)
         val_ds = Subset(dataset, val_idx)
@@ -273,5 +392,5 @@ def make_cv_loaders(
     val_loader = DataLoader(val_ds, batch_size=cfg.batch_size, shuffle=False)
 
     if return_stats:
-        return train_loader, val_loader, stats
+        return train_loader, val_loader, {"x": stats_x, "y": stats_y}
     return train_loader, val_loader

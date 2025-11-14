@@ -398,6 +398,13 @@ def save_and_plot_sweep_trials_metrics(
             values.append(float(v))
         values = np.array(values, dtype=float)
 
+        # Save the values as a text file too
+        values_path = logs_dir / f"{fig_prefix}{metric}_values.txt"
+        with open(values_path, "w", encoding="utf-8") as f:
+            for i, v in enumerate(values):
+                f.write(f"Trial {i}: {v}\n")
+        print(f"[INFO] Saved {metric} values to: {values_path}")
+
         # Create bar plot
         fig, ax = plt.subplots(figsize=(6, 3.2))
         x = np.arange(n_trials)

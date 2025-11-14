@@ -50,36 +50,80 @@ def evaluate_on_npz(
         trainer: your Trainer instance (must have model, device, loss_fn, metrics, evaluate()).
         npz_path: path to the test npz (with 'X' and 'y').
         scaler_stats_path: path to saved normalization stats (.npz).
+        sample_rate: optional subsampling ratio inside NPZDataset.
         batch_size: DataLoader batch size.
-        norm_method: either 'minmax' or 'standardize' (must match training).
+        norm_method: either 'minmax' or 'standardize' for X (must match training).
+        return_raw_outputs: passed through to trainer.evaluate.
     """
 
-    # 1. Load test dataset
+    # 1. Load test dataset (raw, unnormalized X and y)
     test_ds_raw = NPZDataset(npz_path, sample_rate=sample_rate)
 
     # 2. Load normalization stats (computed on train set)
-    stats = load_normalization_stats(scaler_stats_path)
-    method = stats["method"]
-    assert method == norm_method, f"Normalization method mismatch: got {method} vs {norm_method}"
+    stats_all = load_normalization_stats(scaler_stats_path)
+    stats_x = stats_all.get("x", None)
+    stats_y = stats_all.get("y", None)
 
-    # 3. Wrap with NormalizedSubset using saved stats
+    # X normalization: check method
+    if stats_x is None:
+        raise ValueError(
+            "No X normalization stats found in scaler_stats. "
+            "Did you save stats with stats['x']?"
+        )
+
+    method_x = stats_x["method"]
+    assert method_x == norm_method, (
+        f"X normalization method mismatch: got {method_x} vs {norm_method}"
+    )
+
+    # Y normalization: optional
+    normalize_target = stats_y is not None
+    target_norm_method = None
+    y_min = y_max = y_mean = y_std = None
+
+    if normalize_target:
+        target_norm_method = stats_y["method"]
+        if target_norm_method == "minmax":
+            y_min = stats_y["y_min"]
+            y_max = stats_y["y_max"]
+        elif target_norm_method == "standardize":
+            y_mean = stats_y["y_mean"]
+            y_std = stats_y["y_std"]
+        else:
+            raise ValueError(f"Unknown Y normalization method: {target_norm_method}")
+
+    # 3. Wrap with NormalizedSubset using saved stats for X (and optionally Y)
     all_indices = list(range(len(test_ds_raw)))
 
-    if method == "minmax":
+    if method_x == "minmax":
         test_ds = NormalizedSubset(
             test_ds_raw,
             indices=all_indices,
             method="minmax",
-            x_min=stats["x_min"],
-            x_max=stats["x_max"],
+            x_min=stats_x["x_min"],
+            x_max=stats_x["x_max"],
+            # Y normalization options
+            normalize_target=normalize_target,
+            target_norm_method=target_norm_method or "minmax",
+            y_min=y_min,
+            y_max=y_max,
+            y_mean=y_mean,
+            y_std=y_std,
         )
-    else:
+    else:  # "standardize"
         test_ds = NormalizedSubset(
             test_ds_raw,
             indices=all_indices,
             method="standardize",
-            x_mean=stats["x_mean"],
-            x_std=stats["x_std"],
+            x_mean=stats_x["x_mean"],
+            x_std=stats_x["x_std"],
+            # Y normalization options
+            normalize_target=normalize_target,
+            target_norm_method=target_norm_method or "minmax",
+            y_min=y_min,
+            y_max=y_max,
+            y_mean=y_mean,
+            y_std=y_std,
         )
 
     # 4. Build DataLoader
@@ -96,4 +140,9 @@ def evaluate_on_npz(
     for name, val in metrics_result.items():
         print(f"{name:>8s}: {val:.6f}")
 
+    # Note:
+    # - If stats_y is not None, loss/metrics are computed in normalized target space.
+    # - You can inverse-transform preds/targets outside this function using stats_y.
+
     return out_dict
+

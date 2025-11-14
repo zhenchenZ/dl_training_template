@@ -6,6 +6,7 @@ from pathlib import Path
 
 @dataclass
 class ModelConfig:
+    name: str = "mlp"  # "mlp" or "logistic_regression"
     input_dim: int = 7
     hidden_dims: List[int] = field(default_factory=lambda: [64, 64])
     activation: str = "relu"
@@ -16,13 +17,18 @@ class ModelConfig:
 # in config.py
 @dataclass
 class DataConfig:
-    dataset: str = "toy"          # or "real"
+    dataset: str = "real"          # or "real"
     npz_path: str = ""            # used when dataset == "real"
-    n_samples: int = 3000
-    noise_std: float = 0.1
-    val_ratio: float = 0.2
     batch_size: int = 64
     seed: int = 42
+    normalize_x: bool = True
+    x_norm_method: str = "minmax"
+    normalize_y: bool = True
+    y_norm_method: str = "minmax"
+    return_stats: bool = True
+    val_ratio: float = 0.2
+    # n_samples: int = 3000
+    # noise_std: float = 0.1
 
 @dataclass
 class OptimConfig:

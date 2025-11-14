@@ -23,23 +23,6 @@ def _log_jsonl(log_path: str, record: Dict[str, Any]):
     with open(log_path, "a", encoding="utf-8") as f:
         f.write(json.dumps(record) + "\n")
 
-def _to_float(x: Any) -> float:
-    if isinstance(x, (int, float)):
-        return float(x)
-    try:
-        return float(str(x))
-    except (TypeError, ValueError):
-        raise TypeError(f"Expected a float-like value, got {x!r} ({type(x)})")
-
-
-def _to_int(x: Any) -> int:
-    if isinstance(x, int):
-        return x
-    try:
-        return int(str(x))
-    except (TypeError, ValueError):
-        raise TypeError(f"Expected an int-like value, got {x!r} ({type(x)})")
-
 
 def set_by_path(cfg: Config, key: str, value: Any):
     """
@@ -137,7 +120,7 @@ def get_objective(result: Dict[str, Any], monitor: str = "val_loss") -> float:
 
     val_metrics = result.get("val_metrics", {})
     if monitor not in val_metrics:
-        raise KeyError(f"Metric {monitor} not found in val_metrics")
+        raise KeyError(f"Metric {monitor} not found in val_metrics : {val_metrics.keys()}")
     return float(val_metrics[monitor])
 
 
@@ -293,3 +276,22 @@ def random_search(
         "trials": trials,
         "sweep_log_path": log_path,
     }
+
+
+
+def _to_float(x: Any) -> float:
+    if isinstance(x, (int, float)):
+        return float(x)
+    try:
+        return float(str(x))
+    except (TypeError, ValueError):
+        raise TypeError(f"Expected a float-like value, got {x!r} ({type(x)})")
+
+
+def _to_int(x: Any) -> int:
+    if isinstance(x, int):
+        return x
+    try:
+        return int(str(x))
+    except (TypeError, ValueError):
+        raise TypeError(f"Expected an int-like value, got {x!r} ({type(x)})")

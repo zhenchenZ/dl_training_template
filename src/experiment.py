@@ -4,7 +4,7 @@ import torch
 from pathlib import Path
 
 from src.config import Config, get_experiment_dirs
-from src.models import build_mlp
+from src.models import build_mlp, build_logistic_regressor
 from src.metrics import DEFAULT_REGRESSION_METRICS
 from src.trainer import Trainer, build_optimizer
 from src.data_module.dataset import build_dataset, make_train_val_loaders, make_cv_loaders
@@ -35,19 +35,25 @@ def run_single_experiment(cfg: Config):
     """
     Standard train/val run using cfg.data.val_ratio.
     """
-    train_loader, val_loader, norm_stats = make_train_val_loaders(
-        cfg.data,
-        normalize=True,
-        norm_method="minmax",
-        return_stats=True,
-    )
+    train_loader, val_loader, norm_stats = make_train_val_loaders(cfg.data)
     _, _, _, hparams_dir = get_experiment_dirs(cfg.logging, subdirs=("hparams",))
     if norm_stats is not None:
         save_normalization_stats(hparams_dir, norm_stats, name="scaler_stats")
 
-    model = build_mlp(cfg.model)
+    if cfg.model.name == "mlp":
+        model = build_mlp(cfg.model)
+    elif cfg.model.name == "logistic_regression":
+        model = build_logistic_regressor(cfg.model)
+    else:
+        raise ValueError(f"Unsupported model name: {cfg.model.name}")
+
     optimizer = build_optimizer(model.parameters(), cfg.optim)
-    loss_fn = torch.nn.MSELoss()
+    if cfg.model.name == "logistic_regression":
+        loss_fn = torch.nn.BCELoss()
+    elif cfg.model.name == "mlp":
+        loss_fn = torch.nn.MSELoss()
+    else:
+        raise ValueError(f"Unsupported model name: {cfg.model.name}")
 
     trainer = Trainer(
         model=model,
@@ -60,7 +66,8 @@ def run_single_experiment(cfg: Config):
     )
 
     history = trainer.fit(train_loader, val_loader)
-    val_loss, val_metrics = trainer.evaluate(val_loader)
+    out = trainer.evaluate(val_loader, return_raw_outputs=False)
+    val_loss, val_metrics = out['loss'], out['metrics']
 
     return {
         "history": history,
@@ -105,9 +112,6 @@ def run_cv_experiment(cfg: Config):
             train_idx,
             val_idx,
             cfg.data,
-            normalize=True,
-            norm_method="minmax",
-            return_stats=True,
         )
         _, _, _, hparams_dir = get_experiment_dirs(cfg.logging, subdirs=("hparams",))
         if norm_stats is not None:
@@ -135,7 +139,8 @@ def run_cv_experiment(cfg: Config):
 
         print(f"\n=== Fold {fold_idx + 1}/{n_splits} ===")
         trainer.fit(train_loader, val_loader)
-        val_loss, val_metrics = trainer.evaluate(val_loader)
+        out = trainer.evaluate(val_loader, return_raw_outputs=False)
+        val_loss, val_metrics = out['loss'], out['metrics']
 
         print(f"Fold {fold_idx + 1} val_loss={val_loss:.4f} | "
               + ", ".join(f"{k}={v:.4f}" for k, v in val_metrics.items()))

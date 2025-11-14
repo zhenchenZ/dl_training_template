@@ -1,5 +1,5 @@
 model:
-  name: "mlp"
+  name: "logistic_regression"
   input_dim: 6
   hidden_dims: [256]
   activation: "relu"
@@ -8,12 +8,12 @@ model:
 data:
   dataset: "real"          
   npz_path: "data/preprocessed/cleaned_x_y_hot.npz"
-  batch_size: 1024
+  batch_size: 2048
   seed: 42
   normalize_x: true
   x_norm_method: "minmax"
-  normalize_y: false
-  y_norm_method: ""
+  normalize_y: true
+  y_norm_method: "minmax"
   return_stats: true
   val_ratio: 0.2
 
@@ -23,7 +23,7 @@ optim:
   weight_decay: 0.0000136
 
 train:
-  num_epochs: 40
+  num_epochs: 100
   log_interval: 5
   device: "cuda"  # auto
 
@@ -39,6 +39,6 @@ checkpoint:
 
 
 cv:
-  n_splits: 5           # 1 means no CV, just a single train/val split
+  n_splits: 1           # 1 means no CV, just a single train/val split
   shuffle: true
   seed: 42
