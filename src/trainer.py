@@ -49,6 +49,8 @@ class Trainer:
             self.device = train_cfg.device
         else:
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        
+        print(f"\n*** Using device: {self.device} ***\n")
 
         self.model = model.to(self.device)
         self.optimizer = optimizer

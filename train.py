@@ -8,9 +8,7 @@ from src.visu import plot_history
 if __name__ == "__main__":
     """
     Example usage:
-    python train.py \
-        --config config/base_config.yaml \
-        --exp_name very_deep
+python train.py --config config/base_config_logistic.yaml --exp_name 000-logistic_dry_run
     """
     t_start = time()
 

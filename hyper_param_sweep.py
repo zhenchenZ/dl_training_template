@@ -13,18 +13,19 @@ from src.report import save_sweep_best_summary, save_and_plot_sweep_trials_metri
 if __name__ == "__main__":
     """
     Example usage:
-    python hyper_param_sweep.py \
-        --base_config config/base_config.yaml \
-        --sweep_config config/sweep_config.yaml
+python hyper_param_sweep.py --base_config config/base_config_logistic.yaml --sweep_config config/sweep_config_logistic.yaml --exp_name 001-sweep_experiment-logistic
     """
     t0_glb = time()
 
     parser = argparse.ArgumentParser(description="Hyperparameter Sweep")
     parser.add_argument("-b", "--base_config", type=str, default="config/base_config.yaml", help="Path to base config file")
     parser.add_argument("-s", "--sweep_config", type=str, default="config/sweep_config.yaml", help="Path to sweep config file")
+    parser.add_argument("--exp_name", type=str, default=None, help="Optional experiment name to override the one in config")
     args = parser.parse_args()
 
     base_cfg = load_config(args.base_config)
+    if args.exp_name is not None:
+        base_cfg.logging.experiment_name = args.exp_name
     sweep_cfg = load_sweep_config(args.sweep_config)
     do_cv_in_sweep = base_cfg.cv.n_splits > 1
 
@@ -64,7 +65,6 @@ if __name__ == "__main__":
     # ============================================
     # Plot comparison of different trials' best val metrics
     # ============================================
-    print(f"[DEBUG] result['trials'][i]['result'] : {result['trials'][0]['result']}")
     if not do_cv_in_sweep:
         trials_metrics = [
             result['trials'][i]['result']['val_metrics']
