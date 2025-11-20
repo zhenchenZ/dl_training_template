@@ -1,9 +1,6 @@
 model:
   name: "logistic_regression"
   input_dim: 6
-  hidden_dims: [256]
-  activation: "relu"
-  dropout: 0.0
 
 data:
   dataset: "real"          
@@ -19,8 +16,8 @@ data:
 
 optim:
   name: "adam"
-  lr: 0.009  
-  weight_decay: 0.0000136
+  lr: 0.008  
+  weight_decay: 0.00001
 
 train:
   num_epochs: 100
@@ -39,6 +36,6 @@ checkpoint:
 
 
 cv:
-  n_splits: 1           # 1 means no CV, just a single train/val split
+  n_splits: 5           # 1 means no CV, just a single train/val split
   shuffle: true
   seed: 42
